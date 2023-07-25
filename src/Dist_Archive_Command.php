@@ -236,6 +236,61 @@ class Dist_Archive_Command {
 			WP_CLI::error( "Target directory does not exist: {$archive_path}" );
 		}
 
+		if(
+			$assoc_args['format'] === 'zip'
+			&& class_exists('ZipArchive')
+			&& class_exists('RecursiveDirectoryIterator')
+			&& class_exists('RecursiveCallbackFilterIterator')
+			&& class_exists('RecursiveIteratorIterator')
+		) {
+
+			$archive_file = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $archive_file);
+			$archive_basename = pathinfo($archive_file, PATHINFO_BASENAME);
+			$ignored_files[] = '*/' . $archive_basename;
+
+			$directory = new RecursiveDirectoryIterator($path);
+			$filter = new RecursiveCallbackFilterIterator(
+				$directory,
+				static function($current, $key, $iterator) use ($ignored_files) {
+
+					$file_name = $current->getFilename();
+
+					if(in_array($file_name, ['.', '..'], true)) {
+						return false;
+					}
+
+					if($current->isDir()) {
+						return !in_array('*/' . $file_name . '/*', $ignored_files, true);
+					}
+
+					return !in_array('*/' . $file_name, $ignored_files, true);
+				}
+			);
+			$iterator = new RecursiveIteratorIterator($filter);
+
+
+			$zip = new ZipArchive();
+			if($zip->open($archive_file, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+				WP_CLI::error("cannot open <$archive_file>");
+			}
+			$zip->addEmptyDir($archive_base);
+
+			foreach($iterator as $info) {
+				$zip->addFile(
+					$info->getPathname(),
+					$archive_base . str_replace($path, '', $info->getPathname())
+				);
+			}
+
+			if($zip->close()) {
+				WP_CLI::success("Created {$archive_basename}");
+			} else {
+				WP_CLI::error("Failed closing zip: {$archive_file}");
+			}
+
+			return;
+		}
+
 		if ( 'zip' === $assoc_args['format'] ) {
 			$excludes = implode( ' --exclude ', $ignored_files );
 			if ( ! empty( $excludes ) ) {
