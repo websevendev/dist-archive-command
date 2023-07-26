@@ -238,23 +238,14 @@ class Dist_Archive_Command {
 
 		if($assoc_args['format'] === 'zip' && class_exists('ZipArchive')) {
 
-			$ignored_files[] = '*/' . $archive_filename;
-
 			$directory = new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::SKIP_DOTS);
 			$filter = new RecursiveCallbackFilterIterator(
 				$directory,
-				static function($current, $key, $iterator) use ($ignored_files) {
-
-					$file_name = $current->getFilename();
-
-					if($current->isDir()) {
-						return !in_array('*/' . $file_name . '/*', $ignored_files, true);
-					}
-
-					return !in_array('*/' . $file_name, $ignored_files, true);
+				function($current, $key, $iterator) use ($maybe_ignored_files) {
+					return !$this->is_ignored_file($iterator->getSubPathName(), $maybe_ignored_files);
 				}
 			);
-			$iterator = new RecursiveIteratorIterator($filter);
+			$iterator = new RecursiveIteratorIterator($filter, RecursiveIteratorIterator::SELF_FIRST);
 
 
 			$zip = new ZipArchive();
@@ -264,9 +255,14 @@ class Dist_Archive_Command {
 			$zip->addEmptyDir($archive_base);
 
 			foreach($iterator as $info) {
+
+				if($info->isDir()) {
+					continue;
+				}
+
 				$zip->addFile(
 					$info->getPathname(),
-					$archive_base . str_replace($path, '', $info->getPathname())
+					$archive_base . DIRECTORY_SEPARATOR . $iterator->getSubPathName()
 				);
 			}
 
